@@ -1,0 +1,102 @@
+# Builds an unsigned iOS IPA of this fork with the iOS floor lowered to 17.4.
+# Run it from Actions > "iOS 17 IPA" > Run workflow, then download the "Apparition-iOS17-ipa"
+# artifact and sideload the .ipa with your usual tool (SideStore, AltStore, Sideloadly...).
+name: iOS 17 IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios17]
+
+permissions:
+  contents: read
+
+env:
+  # The sibling packages the app builds against, pinned so a change upstream can't break this build.
+  DEBUGTRACE_REF: b1d1d0ece1f9ce5fee095ed5289fbe431385e136
+  RAVESDK_REF: e9b063d2e07de9ad7c787ebb0d6eb4964832740b
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Apparition
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with: { repository: illixion/DebugTrace, ref: "${{ env.DEBUGTRACE_REF }}", path: DebugTrace }
+      - uses: actions/checkout@v4
+        with: { repository: illixion/RAVESDK, ref: "${{ env.RAVESDK_REF }}", path: RAVESDK }
+
+      - name: Patch RAVESDK down to iOS 17
+        run: git -C RAVESDK apply --verbose ../Apparition/patches/ravesdk-ios17.patch
+
+      - name: Choose the newest Xcode on the image
+        run: |
+          ls -d /Applications/Xcode*.app
+          xc="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|rc' | sort -V | tail -1)"
+          sudo xcode-select -s "$xc"
+          xcodebuild -version
+          xcodebuild -showsdks | grep iphoneos
+
+      - name: Tools
+        run: |
+          brew install xcodegen
+          RUST_TOOLCHAIN="$(sed -n 's/^RUST_TOOLCHAIN=//p' Apparition/scripts/release-toolchain)"
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target aarch64-apple-ios
+          rustup default "$RUST_TOOLCHAIN"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Apparition/core
+          cache-on-failure: true
+
+      - name: Build the Rust core for iOS
+        working-directory: Apparition
+        run: scripts/build-core.sh ios
+
+      - name: Build the app (Release, unsigned)
+        working-directory: Apparition
+        run: |
+          xcodegen generate --quiet
+          mkdir -p build
+          status=0
+          xcodebuild -project Apparition.xcodeproj -scheme Apparition -configuration Release \
+            -sdk iphoneos -destination "generic/platform=iOS" -derivedDataPath build/DerivedData \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) APPARITION_RELEASE' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > build/xcodebuild.log 2>&1 || status=$?
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" build/xcodebuild.log | sort -u | head -200 || true
+          exit $status
+
+      # Only the errors, so a failed run is quick to read (and paste back).
+      - name: Collect errors
+        if: failure()
+        working-directory: Apparition
+        run: |
+          grep -E "error:" build/xcodebuild.log | sort -u > build/errors.txt || true
+          cat build/errors.txt | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-errors
+          path: |
+            Apparition/build/errors.txt
+            Apparition/build/xcodebuild.log
+
+      - name: Package the IPA
+        working-directory: Apparition
+        run: |
+          app=build/DerivedData/Build/Products/Release-iphoneos/Apparition.app
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$app/Info.plist"
+          xcrun strip -S "$app/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
+          mkdir -p build/ipa/Payload
+          ditto "$app" build/ipa/Payload/Apparition.app
+          (cd build/ipa && zip -qryX ../Apparition-iOS17.ipa Payload)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Apparition-iOS17-ipa
+          path: Apparition/build/Apparition-iOS17.ipa
+          if-no-files-found: error

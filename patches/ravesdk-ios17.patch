@@ -1,0 +1,44 @@
+diff --git a/Package.swift b/Package.swift
+index 30c2b15..6f386ac 100644
+--- a/Package.swift
++++ b/Package.swift
+@@ -25,7 +25,7 @@ let package = Package(
+     // tvOS is a real target (Hypnos on Apple TV). What tvOS lacks is fenced
+     // with `!os(tvOS)`: pointer-driven views (EQEditorView), the pasteboard,
+     // and the open-a-window half of the window-session registry (openWindow capture) and its App Intent.
+-    platforms: [.visionOS(.v26), .macOS(.v14), .iOS(.v26), .tvOS(.v26)],
++    platforms: [.visionOS(.v26), .macOS(.v14), .iOS(.v17), .tvOS(.v26)],
+     products: [
+         .library(name: "RAVENet", targets: ["RAVENet"]),
+         .library(name: "RAVEUI", targets: ["RAVEUI"]),
+diff --git a/Sources/RAVEUI/RAVETouchChrome.swift b/Sources/RAVEUI/RAVETouchChrome.swift
+index 9ea7809..bda3328 100644
+--- a/Sources/RAVEUI/RAVETouchChrome.swift
++++ b/Sources/RAVEUI/RAVETouchChrome.swift
+@@ -100,7 +100,7 @@ public struct RAVEChromeBar<Content: View>: View {
+         .font(.title3)
+         .padding(.horizontal, RAVEChromeMetrics.horizontalPadding)
+         .padding(.vertical, RAVEChromeMetrics.verticalPadding)
+-        .glassEffect(in: .capsule)
++        .modifier(RAVEChromeCapsuleBackground())
+         .contentShape(.capsule)
+         // Deliberately empty: claims the tap so it never reaches the content
+         // below. Buttons inside still win over this gesture.
+@@ -108,6 +108,17 @@ public struct RAVEChromeBar<Content: View>: View {
+     }
+ }
+ 
++/// Liquid Glass where the OS has it; a material capsule before iOS 26.
++private struct RAVEChromeCapsuleBackground: ViewModifier {
++    func body(content: Content) -> some View {
++        if #available(iOS 26.0, tvOS 26.0, *) {
++            content.glassEffect(in: .capsule)
++        } else {
++            content.background(.ultraThinMaterial, in: .capsule)
++        }
++    }
++}
++
+ #endif
+ 
+ /// The spacing a floating chrome bar puts around and between its buttons.

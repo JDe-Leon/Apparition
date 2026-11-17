@@ -237,10 +237,23 @@ struct RootView: View {
     }
     #else
     private var tabs: some View {
-        TabView(selection: $tab) {
-            ForEach(visibleTabs, id: \.self) { item in
-                Tab(item.rawValue, systemImage: item.systemImage, value: item) {
-                    screen(item)
+        Group {
+            if #available(iOS 18.0, tvOS 18.0, *) {
+                TabView(selection: $tab) {
+                    ForEach(visibleTabs, id: \.self) { item in
+                        Tab(item.rawValue, systemImage: item.systemImage, value: item) {
+                            screen(item)
+                        }
+                    }
+                }
+            } else {
+                // iOS 17 has no `Tab`: the older tabItem/tag form.
+                TabView(selection: $tab) {
+                    ForEach(visibleTabs, id: \.self) { item in
+                        screen(item)
+                            .tabItem { Label(item.rawValue, systemImage: item.systemImage) }
+                            .tag(item)
+                    }
                 }
             }
         }

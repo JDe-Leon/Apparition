@@ -2,7 +2,7 @@ name: Apparition
 options:
   bundleIdPrefix: com.illixion
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "17.4"
     macOS: "14.0"
     # RAVESDK (RAVEUI's tab bar) declares visionOS 26.
     visionOS: "26.0"
@@ -162,8 +162,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.illixion.apparition
         TARGETED_DEVICE_FAMILY: "1,2,3,7"
-        # RAVESDK (RAVEUI's tab bar) declares iOS, tvOS and visionOS 26.
-        IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+        # iOS lowered to 17.4 (the first with the RSD tunnel idevice uses); RAVESDK is patched to match
+        # in CI (patches/ravesdk-ios17.patch). tvOS and visionOS stay at 26.
+        IPHONEOS_DEPLOYMENT_TARGET: "17.4"
         TVOS_DEPLOYMENT_TARGET: "26.0"
         XROS_DEPLOYMENT_TARGET: "26.0"
         # Probe/Assets.xcassets: the website's ghost logo as a layered (parallax) icon.
@@ -190,7 +191,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.illixion.apparition.tests
         GENERATE_INFOPLIST_FILE: YES
-        IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.4"
         XROS_DEPLOYMENT_TARGET: "26.0"
         # The app's module carries its bridging header (the core's C interface).
         HEADER_SEARCH_PATHS: $(SRCROOT)/build/core-out/include
