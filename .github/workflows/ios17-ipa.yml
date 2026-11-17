@@ -18,7 +18,13 @@ env:
 
 jobs:
   ipa:
-    runs-on: macos-26
+    # Apple-silicon macOS runners are often short of capacity, so try several images at once;
+    # any that lacks an iOS 26 SDK stops at "Choose Xcode".
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26, macos-15, macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +45,9 @@ jobs:
           xc="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|rc' | sort -V | tail -1)"
           sudo xcode-select -s "$xc"
           xcodebuild -version
-          xcodebuild -showsdks | grep iphoneos
+          sdk="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "iphoneos SDK $sdk"
+          [[ "${sdk%%.*}" -ge 26 ]] || { echo "::error::needs the iOS 26 SDK; this image has $sdk"; exit 1; }
 
       - name: Tools
         run: |
@@ -81,7 +89,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: build-errors
+          name: build-errors-${{ matrix.runner }}
           path: |
             Apparition/build/errors.txt
             Apparition/build/xcodebuild.log
@@ -97,6 +105,6 @@ jobs:
           (cd build/ipa && zip -qryX ../Apparition-iOS17.ipa Payload)
       - uses: actions/upload-artifact@v4
         with:
-          name: Apparition-iOS17-ipa
+          name: Apparition-iOS17-ipa-${{ matrix.runner }}
           path: Apparition/build/Apparition-iOS17.ipa
           if-no-files-found: error
