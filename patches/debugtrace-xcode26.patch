@@ -1,0 +1,37 @@
+diff --git a/Sources/DebugTrace/DebugSurface.swift b/Sources/DebugTrace/DebugSurface.swift
+index 9b80388..44d073e 100644
+--- a/Sources/DebugTrace/DebugSurface.swift
++++ b/Sources/DebugTrace/DebugSurface.swift
+@@ -121,7 +121,8 @@ public final class DebugSurface {
+             Self.log.error("endpoint '\(endpoint.name, privacy: .public)' replaces one registered by \(owner, privacy: .public): it has no module to tell it apart, so the later one wins")
+             return endpoint
+         }
+-        let prefixed = String((module + endpoint.name.prefix(1).uppercased() + endpoint.name.dropFirst()).prefix(48))
++        let capitalized = endpoint.name.prefix(1).uppercased() + String(endpoint.name.dropFirst())
++        let prefixed = String((module + capitalized).prefix(48))
+         if let other = endpoints[prefixed], other.module != module {
+             Self.log.error("endpoint '\(endpoint.name, privacy: .public)' of \(module, privacy: .public) is not registered: \(owner, privacy: .public) holds the name and '\(prefixed, privacy: .public)' is taken too")
+             return nil
+diff --git a/Sources/DebugTrace/ZipWriter.swift b/Sources/DebugTrace/ZipWriter.swift
+index afd3b9d..caed306 100644
+--- a/Sources/DebugTrace/ZipWriter.swift
++++ b/Sources/DebugTrace/ZipWriter.swift
+@@ -97,8 +97,16 @@ struct ZipWriter {
+     static func dosDateTime(_ date: Date) -> (time: UInt16, date: UInt16) {
+         let components = Calendar(identifier: .gregorian).dateComponents(in: .current, from: date)
+         let year = max(1980, components.year ?? 1980)
+-        let time = UInt16((components.hour ?? 0) << 11 | (components.minute ?? 0) << 5 | (components.second ?? 0) / 2)
+-        let day = UInt16((year - 1980) << 9 | (components.month ?? 1) << 5 | (components.day ?? 1))
++        // Split up so Xcode 26's type checker finishes in time.
++        let hour: Int = components.hour ?? 0
++        let minute: Int = components.minute ?? 0
++        let second: Int = components.second ?? 0
++        let month: Int = components.month ?? 1
++        let dayOfMonth: Int = components.day ?? 1
++        let timeBits: Int = (hour << 11) | (minute << 5) | (second / 2)
++        let dateBits: Int = ((year - 1980) << 9) | (month << 5) | dayOfMonth
++        let time = UInt16(timeBits)
++        let day = UInt16(dateBits)
+         return (time, day)
+     }
+ }

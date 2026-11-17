@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-26, macos-15, macos-latest, macos-15-intel]
+        runner: [macos-15-intel, macos-26, macos-15, macos-latest]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
@@ -36,8 +36,10 @@ jobs:
       - uses: actions/checkout@v4
         with: { repository: illixion/RAVESDK, ref: "${{ env.RAVESDK_REF }}", path: RAVESDK }
 
-      - name: Patch RAVESDK down to iOS 17
-        run: git -C RAVESDK apply --verbose ../Apparition/patches/ravesdk-ios17.patch
+      - name: Patch RAVESDK down to iOS 17, and DebugTrace for Xcode 26's compiler
+        run: |
+          git -C RAVESDK apply --verbose ../Apparition/patches/ravesdk-ios17.patch
+          git -C DebugTrace apply --verbose ../Apparition/patches/debugtrace-xcode26.patch
 
       - name: Choose the newest Xcode on the image
         run: |
