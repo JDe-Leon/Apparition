@@ -130,6 +130,11 @@ char *apparition_uninstall(struct AdapterHandle *adapter, struct RsdHandshakeHan
 // Both must be development-signed. Remove the old copy only when failed is empty.
 char *apparition_migrate_container(struct AdapterHandle *adapter, struct RsdHandshakeHandle *handshake,
                                    const char *from, const char *to);
+// Mounts the personalized Developer Disk Image (needed by debugserver) from the files in dir
+// (Image.dmg, Image.dmg.trustcache, BuildManifest.plist) unless one is mounted; dir may be null
+// to only check. {ok, mounted: "already" | "now" | false, needsFiles}.
+char *apparition_ensure_ddi(struct AdapterHandle *adapter, struct RsdHandshakeHandle *handshake,
+                            const char *dir);
 // Launches bundle_id suspended, attaches debugserver over the tunnel and serves the
 // brk #0x69 (UTM) and brk #0xf00d (JIT26) protocols. Waits up to wait_seconds (0: no limit)
 // for the first request; once the app has asked, serves it until it exits or detaches.
