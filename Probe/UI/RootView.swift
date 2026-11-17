@@ -85,7 +85,12 @@ struct RootView: View {
         tab = .setup
     }
 
+    // Split in three so Xcode 26's type checker finishes the chain in time.
     var body: some View {
+        panels(alerts(base))
+    }
+
+    private var base: some View {
         tabs
             .onChange(of: showDiagnostics) { _, shown in
                 if !shown && tab == .diagnostics { tab = .settings }
@@ -127,6 +132,10 @@ struct RootView: View {
                     Task { await library.signing.receive(url) }
                 }
             }
+    }
+
+    private func alerts(_ content: some View) -> some View {
+        content
             #if os(visionOS)
             // A request that couldn't be served: the JIT request window says why.
             .onChange(of: model.jitFailure?.id) { _, failure in
@@ -152,6 +161,10 @@ struct RootView: View {
                 Text(LibraryModel.JITRequest.message(request, managed: library.isManaged(request.bundleId)))
             }
             #endif
+    }
+
+    private func panels(_ content: some View) -> some View {
+        content
             .panel(isPresented: Binding(get: { library.incoming != nil }, set: {
                 if !$0 {
                     guard !library.busy else { return }
