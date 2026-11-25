@@ -1,0 +1,109 @@
+# Test build only (not for upstream): an unsigned iOS IPA of this branch, to try the
+# Developer Disk Image change on a device. Runs on every push to ddi-test-build, or by hand
+# from Actions > "Test IPA". Download the "Apparition-test-ipa-*" artifact and sideload it.
+name: Test IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ddi-test-build]
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    # Several images at once, since Apple-silicon runners are often short of capacity; the
+    # first IPA that comes out is enough.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26, macos-latest, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Apparition
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with: { repository: illixion/DebugTrace, path: DebugTrace }
+      - uses: actions/checkout@v4
+        with: { repository: illixion/RAVESDK, path: RAVESDK }
+
+      - name: Choose the newest Xcode on the image
+        run: |
+          ls -d /Applications/Xcode*.app
+          xc="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|rc' | sort -V | tail -1)"
+          sudo xcode-select -s "$xc"
+          xcodebuild -version
+          sdk="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "iphoneos SDK $sdk"
+          [[ "${sdk%%.*}" -ge 26 ]] || { echo "::error::needs the iOS 26 SDK or later; this image has $sdk"; exit 1; }
+
+      # Xcode 26's type checker times out on two DebugTrace expressions that Xcode 27 accepts.
+      - name: Patch DebugTrace for Xcode 26 when it applies
+        run: |
+          if git -C DebugTrace apply --check ../Apparition/patches/debugtrace-xcode26.patch 2>/dev/null; then
+            git -C DebugTrace apply --verbose ../Apparition/patches/debugtrace-xcode26.patch
+          else
+            echo "patch doesn't apply (already fixed upstream?); building DebugTrace as it is"
+          fi
+
+      - name: Tools
+        run: |
+          brew install xcodegen
+          RUST_TOOLCHAIN="$(sed -n 's/^RUST_TOOLCHAIN=//p' Apparition/scripts/release-toolchain)"
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target aarch64-apple-ios
+          rustup default "$RUST_TOOLCHAIN"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Apparition/core
+          cache-on-failure: true
+
+      - name: Build the Rust core for iOS
+        working-directory: Apparition
+        run: scripts/build-core.sh ios
+
+      - name: Build the app (Release, unsigned)
+        working-directory: Apparition
+        run: |
+          xcodegen generate --quiet
+          mkdir -p build
+          status=0
+          xcodebuild -project Apparition.xcodeproj -scheme Apparition -configuration Release \
+            -sdk iphoneos -destination "generic/platform=iOS" -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > build/xcodebuild.log 2>&1 || status=$?
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" build/xcodebuild.log | sort -u | head -200 || true
+          exit $status
+
+      - name: Collect errors
+        if: failure()
+        working-directory: Apparition
+        run: |
+          grep -E "error:" build/xcodebuild.log | sort -u > build/errors.txt || true
+          cat build/errors.txt | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-errors-${{ matrix.runner }}
+          path: |
+            Apparition/build/errors.txt
+            Apparition/build/xcodebuild.log
+
+      - name: Package the IPA
+        working-directory: Apparition
+        run: |
+          app=build/DerivedData/Build/Products/Release-iphoneos/Apparition.app
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$app/Info.plist"
+          xcrun strip -S "$app/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
+          mkdir -p build/ipa/Payload
+          ditto "$app" build/ipa/Payload/Apparition.app
+          (cd build/ipa && zip -qryX ../Apparition-ddi-test.ipa Payload)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Apparition-test-ipa-${{ matrix.runner }}
+          path: Apparition/build/Apparition-ddi-test.ipa
+          if-no-files-found: error
